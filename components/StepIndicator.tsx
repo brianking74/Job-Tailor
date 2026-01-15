@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AppStep } from '../types';
+import { AppStep } from '../types.ts';
 
 interface StepIndicatorProps {
   currentStep: AppStep;

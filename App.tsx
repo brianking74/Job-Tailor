@@ -1,10 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout } from './components/Layout';
-import { StepIndicator } from './components/StepIndicator';
-import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments } from './types';
-import { analyzeATS, generateTailoredContent } from './services/geminiService';
-import { downloadAsPDF, downloadAsWord } from './utils/exportUtils';
+import { Layout } from './components/Layout.tsx';
+import { StepIndicator } from './components/StepIndicator.tsx';
+import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments } from './types.ts';
+import { analyzeATS, generateTailoredContent } from './services/geminiService.ts';
+import { downloadAsPDF, downloadAsWord } from './utils/exportUtils.ts';
 
 // Global type declarations for CDN libraries
 declare const mammoth: any;

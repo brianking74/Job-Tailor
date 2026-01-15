@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ATSAnalysis, TailoredDocuments } from "../types";
+import { ATSAnalysis, TailoredDocuments } from "../types.ts";
 
 export const analyzeATS = async (cv: string, jd: string): Promise<ATSAnalysis> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
