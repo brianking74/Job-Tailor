@@ -32,9 +32,20 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
+// Utility to write diagnostics to a workspace log file
+const logToFile = (message: string) => {
+  try {
+    const timestamp = new Date().toISOString();
+    fs.appendFileSync(path.join(process.cwd(), 'server_log.txt'), `[${timestamp}] ${message}\n`);
+  } catch (err) {
+    console.error("Failed to write to server_log.txt:", err);
+  }
+};
+
 // Initialize the Google Gemini client on the server
 const getGeminiClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
+  logToFile(`getGeminiClient: apiKey check. Exists: ${!!apiKey}, Starts with PLACEHOLDER: ${apiKey?.startsWith("PLACEHOLDER")}, Length: ${apiKey?.length}`);
   if (!apiKey || apiKey === "PLACEHOLDER_API_KEY") {
     throw new Error("GEMINI_API_KEY is not configured or is a placeholder. Please set your Gemini API Key in the Settings > Secrets panel of AI Studio.");
   }
@@ -50,13 +61,17 @@ const getGeminiClient = () => {
 
 // API Endpoint: Analyze CV against Job Description (ATS Analysis)
 app.post("/api/analyze-ats", async (req, res) => {
+  logToFile("STAGELOG: Received POST /api/analyze-ats");
   try {
     const { cv, jd } = req.body;
+    logToFile(`STAGELOG: /api/analyze-ats cv parsed: ${!!cv} (len ${cv?.length || 0}), jd parsed: ${!!jd} (len ${jd?.length || 0})`);
     if (!cv || !jd) {
+      logToFile("STAGELOG: Missing CV or JD in request body");
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
     const ai = getGeminiClient();
+    logToFile("STAGELOG: Gemini client initialized successfully. Requesting content generation...");
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: `Analyze the following CV against the provided Job Description. Provide an ATS compatibility score (0-100) and specific improvement suggestions.
@@ -82,12 +97,17 @@ app.post("/api/analyze-ats", async (req, res) => {
     });
 
     const text = response.text;
+    logToFile(`STAGELOG: Gemini response received: ${!!text} (len ${text?.length || 0})`);
     if (!text) {
       throw new Error("Empty response from Gemini ATS analysis model.");
     }
 
     res.json(JSON.parse(text));
   } catch (error: any) {
+    logToFile(`STAGELOG ERROR: at /api/analyze-ats: ${error.message || error}`);
+    if (error.stack) {
+      logToFile(`STAGELOG STACK: ${error.stack}`);
+    }
     console.error("Error at /api/analyze-ats:", error);
     res.status(500).json({ error: error.message || "Failed to analyze documents." });
   }
@@ -95,13 +115,17 @@ app.post("/api/analyze-ats", async (req, res) => {
 
 // API Endpoint: Tailor My CV, Cover Letter, and Email
 app.post("/api/generate-tailored", async (req, res) => {
+  logToFile("STAGELOG: Received POST /api/generate-tailored");
   try {
     const { cv, jd } = req.body;
+    logToFile(`STAGELOG: /api/generate-tailored cv parsed: ${!!cv} (len ${cv?.length || 0}), jd parsed: ${!!jd} (len ${jd?.length || 0})`);
     if (!cv || !jd) {
+      logToFile("STAGELOG: Missing CV or JD in request body");
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
     const ai = getGeminiClient();
+    logToFile("STAGELOG: Gemini client initialized successfully. Requesting content generation for tailoring...");
     const response = await ai.models.generateContent({
       model: "gemini-3.5-flash",
       contents: `You are a world-class professional career consultant and expert copywriter. 
@@ -143,12 +167,17 @@ app.post("/api/generate-tailored", async (req, res) => {
     });
 
     const text = response.text;
+    logToFile(`STAGELOG: Gemini response received: ${!!text} (len ${text?.length || 0})`);
     if (!text) {
       throw new Error("Empty response from Gemini tailoring model.");
     }
 
     res.json(JSON.parse(text));
   } catch (error: any) {
+    logToFile(`STAGELOG ERROR: at /api/generate-tailored: ${error.message || error}`);
+    if (error.stack) {
+      logToFile(`STAGELOG STACK: ${error.stack}`);
+    }
     console.error("Error at /api/generate-tailored:", error);
     res.status(500).json({ error: error.message || "Failed to generate tailored content." });
   }

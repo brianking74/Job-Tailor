@@ -142,6 +142,7 @@ export const RemoteJobs: React.FC<RemoteJobsProps> = ({ onTailorJob, onGoBack })
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedExp, setSelectedExp] = useState<string>('all');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [activeJob, setActiveJob] = useState<RemoteJob | null>(null);
 
   // Extract all distinct tags for filtering
@@ -149,6 +150,17 @@ export const RemoteJobs: React.FC<RemoteJobsProps> = ({ onTailorJob, onGoBack })
     const tags = new Set<string>();
     SAMPLE_JOBS.forEach(j => j.tags.forEach(t => tags.add(t)));
     return Array.from(tags).sort();
+  }, []);
+
+  // Extract all distinct locations for filtering
+  const allLocations = useMemo(() => {
+    const locations = new Set<string>();
+    SAMPLE_JOBS.forEach(j => {
+      if (j.location) {
+        locations.add(j.location);
+      }
+    });
+    return Array.from(locations).sort();
   }, []);
 
   // Filter jobs based on states
@@ -163,10 +175,11 @@ export const RemoteJobs: React.FC<RemoteJobsProps> = ({ onTailorJob, onGoBack })
       const matchType = selectedType === 'all' || job.jobType === selectedType;
       const matchExp = selectedExp === 'all' || job.experienceLevel === selectedExp;
       const matchTag = !selectedTag || job.tags.includes(selectedTag);
+      const matchLocation = selectedLocation === 'all' || job.location === selectedLocation;
 
-      return matchSearch && matchType && matchExp && matchTag;
+      return matchSearch && matchType && matchExp && matchTag && matchLocation;
     });
-  }, [searchTerm, selectedType, selectedExp, selectedTag]);
+  }, [searchTerm, selectedType, selectedExp, selectedTag, selectedLocation]);
 
   // Format currency helpers
   const formatSalary = (min: number | null, max: number | null, curr: string) => {
@@ -260,6 +273,24 @@ export const RemoteJobs: React.FC<RemoteJobsProps> = ({ onTailorJob, onGoBack })
 
             <div>
               <h4 className="font-bold text-slate-900 border-b border-slate-200 pb-2 text-sm uppercase tracking-wide">
+                Location
+              </h4>
+              <div className="mt-3">
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium cursor-pointer"
+                >
+                  <option value="all">🌐 All Locations</option>
+                  {allLocations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="font-bold text-slate-900 border-b border-slate-200 pb-2 text-sm uppercase tracking-wide">
                 Filter by Skill Tag
               </h4>
               <div className="flex flex-wrap gap-1.5 mt-3">
@@ -291,14 +322,6 @@ export const RemoteJobs: React.FC<RemoteJobsProps> = ({ onTailorJob, onGoBack })
             </div>
           </div>
 
-          {/* Stats overview bento brick */}
-          <div className="bg-gradient-to-br from-indigo-900 to-slate-900 p-6 rounded-3xl text-white">
-            <h5 className="font-bold text-sm text-indigo-300 mb-2">INTEGRATION SYNC</h5>
-            <div className="text-3xl font-black mb-1">99.8%</div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Automatic validation cron scheduled on Vercel at 3:00 AM UTC. Pipeline extracts, normalizes, and clears duplications automatically.
-            </p>
-          </div>
         </div>
 
         {/* Right pane results flow */}
