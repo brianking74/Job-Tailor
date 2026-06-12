@@ -47,6 +47,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isEditingCV, setIsEditingCV] = useState(false);
   const [tempCVContent, setTempCVContent] = useState("");
+  const [cvInputMode, setCvInputMode] = useState<'upload' | 'paste'>('upload');
+  const [manualCVText, setManualCVText] = useState("");
   
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -498,33 +500,89 @@ const App: React.FC = () => {
           {/* Step 1: Upload CV */}
           {step === AppStep.UPLOAD_CV && (
             <div className="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 animate-fadeIn">
-              <h2 className="text-3xl font-bold mb-2 text-slate-900">Step 1: Upload Your Master CV</h2>
-              <p className="text-slate-500 mb-10 text-lg">We use your master file as the DNA for all tailored variations.</p>
+              <h2 className="text-3xl font-bold mb-2 text-slate-900">Step 1: Your Master CV / Resume</h2>
+              <p className="text-slate-500 mb-8 text-lg">We use your master file as the DNA for all tailored variations.</p>
               
-              {!cvData ? (
-                <div className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all ${isLoading ? 'border-blue-200 bg-blue-50/30 cursor-wait' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/10 cursor-pointer'}`}>
-                  <input 
-                    type="file" 
-                    id="cv-upload" 
-                    className="hidden" 
-                    accept=".txt,.md,.rtf,.pdf,.docx" 
-                    onChange={handleFileUpload} 
-                    disabled={isLoading}
-                  />
-                  <label htmlFor="cv-upload" className={isLoading ? 'cursor-wait' : 'cursor-pointer'}>
-                    <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                      {isLoading ? (
-                        <i className="fas fa-circle-notch fa-spin text-3xl"></i>
-                      ) : (
-                        <i className="fas fa-file-upload text-3xl"></i>
-                      )}
-                    </div>
-                    <div className="text-xl font-bold text-slate-900 mb-2">
-                      {isLoading ? "Processing file..." : "Select your Resume"}
-                    </div>
-                    <p className="text-sm text-slate-400">PDF, DOCX, or Text (Max 5MB)</p>
-                  </label>
+              {!cvData && (
+                <div className="flex gap-2 p-1.5 bg-slate-100 rounded-2xl mb-8 max-w-md">
+                  <button
+                    type="button"
+                    onClick={() => setCvInputMode('upload')}
+                    className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                      cvInputMode === 'upload'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <i className="fas fa-file-arrow-up"></i> File Upload
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCvInputMode('paste')}
+                    className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                      cvInputMode === 'paste'
+                        ? 'bg-white text-slate-900 shadow-sm'
+                        : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+                    }`}
+                  >
+                    <i className="fas fa-file-lines"></i> Paste Text Manually
+                  </button>
                 </div>
+              )}
+
+              {!cvData ? (
+                cvInputMode === 'upload' ? (
+                  <div className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all ${isLoading ? 'border-blue-200 bg-blue-50/30 cursor-wait' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/10 cursor-pointer'}`}>
+                    <input 
+                      type="file" 
+                      id="cv-upload" 
+                      className="hidden" 
+                      accept=".txt,.md,.rtf,.pdf,.docx" 
+                      onChange={handleFileUpload} 
+                      disabled={isLoading}
+                    />
+                    <label htmlFor="cv-upload" className={isLoading ? 'cursor-wait' : 'cursor-pointer'}>
+                      <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                        {isLoading ? (
+                          <i className="fas fa-circle-notch fa-spin text-3xl"></i>
+                        ) : (
+                          <i className="fas fa-file-upload text-3xl"></i>
+                        )}
+                      </div>
+                      <div className="text-xl font-bold text-slate-900 mb-2">
+                        {isLoading ? "Processing file..." : "Select your Resume"}
+                      </div>
+                      <p className="text-sm text-slate-400">PDF, DOCX, or Text (Max 5MB)</p>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="space-y-6 animate-fadeIn">
+                    <textarea
+                      className="w-full h-80 p-6 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none text-slate-700 leading-relaxed"
+                      placeholder="Paste your resume/CV text here. Include your skills, experience, bullet points, education, and target job notes..."
+                      value={manualCVText}
+                      onChange={(e) => setManualCVText(e.target.value)}
+                    />
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => {
+                          if (!manualCVText.trim()) {
+                            setError("Please paste your CV text before submitting.");
+                            return;
+                          }
+                          setCvData({
+                            content: manualCVText,
+                            fileName: "Pasted_Resume_DNA.txt"
+                          });
+                          setError(null);
+                        }}
+                        className="bg-blue-600 text-white px-10 py-4 rounded-full font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
+                      >
+                        Apply Resume DNA <i className="fas fa-check-double"></i>
+                      </button>
+                    </div>
+                  </div>
+                )
               ) : (
                 <div className="p-10 border border-slate-200 bg-slate-50/50 rounded-3xl text-center animate-fadeIn">
                   <div className="w-20 h-15 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
@@ -541,6 +599,7 @@ const App: React.FC = () => {
                       onClick={() => {
                         setCvData(null);
                         localStorage.removeItem(STORAGE_KEY_CV);
+                        setManualCVText("");
                       }}
                       className="px-6 py-3 border border-slate-200 text-slate-600 rounded-full font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all flex items-center gap-2"
                     >
