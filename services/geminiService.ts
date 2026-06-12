@@ -49,7 +49,16 @@ export const analyzeATS = async (cv: string, jd: string): Promise<ATSAnalysis> =
     if (err.message && (err.message.includes("GEMINI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
       throw err;
     }
-    if (err.message && err.message.includes("Failed to fetch")) {
+    const errStr = (err.message || "").toLowerCase();
+    const isNetworkError = err.name === 'TypeError' || 
+                          errStr.includes("fetch") || 
+                          errStr.includes("load failed") || 
+                          errStr.includes("network") || 
+                          errStr.includes("connect") ||
+                          errStr.includes("cors") ||
+                          errStr.includes("abort");
+
+    if (isNetworkError) {
       const diagnosticError = await diagnoseError(err);
       throw diagnosticError;
     }
@@ -85,7 +94,16 @@ export const generateTailoredContent = async (cv: string, jd: string): Promise<T
     if (err.message && (err.message.includes("GEMINI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
       throw err;
     }
-    if (err.message && err.message.includes("Failed to fetch")) {
+    const errStr = (err.message || "").toLowerCase();
+    const isNetworkError = err.name === 'TypeError' || 
+                          errStr.includes("fetch") || 
+                          errStr.includes("load failed") || 
+                          errStr.includes("network") || 
+                          errStr.includes("connect") ||
+                          errStr.includes("cors") ||
+                          errStr.includes("abort");
+
+    if (isNetworkError) {
       const diagnosticError = await diagnoseError(err);
       throw diagnosticError;
     }
