@@ -671,14 +671,14 @@ const App: React.FC = () => {
               <div className="flex justify-between items-center">
                 <button onClick={() => setStep(AppStep.JOB_DETAILS)} className="text-slate-500 font-bold hover:text-slate-900">Modify JD</button>
                 <button 
-                  onClick={() => setShowPaymentModal(true)}
+                  onClick={() => startTailoring()}
                   disabled={isLoading || isEditingCV}
                   className="bg-blue-600 text-white px-12 py-5 rounded-full font-black text-lg hover:bg-blue-700 shadow-2xl shadow-blue-200 flex items-center gap-3 disabled:opacity-50"
                 >
                   {isLoading ? (
                     <>Optimizing Assets <i className="fas fa-spinner fa-spin"></i></>
                   ) : (
-                    <>Generate Premium Assets ($5) <i className="fas fa-wand-magic-sparkles"></i></>
+                    <>Generate Tailored Assets <i className="fas fa-wand-magic-sparkles"></i></>
                   )}
                 </button>
               </div>
