@@ -38,6 +38,14 @@ app.use((req, res, next) => {
   next();
 });
 
+// Force browsers and proxies to bypass caching of dynamic SPA files and index pages
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  next();
+});
+
 // Utility to write diagnostics to a workspace log file
 const logToFile = (message: string) => {
   try {
