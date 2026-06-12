@@ -232,25 +232,36 @@ app.post("/api/generate-tailored", async (req, res) => {
   }
 });
 
-// Configure Vite middleware in development, and serve static output files in production
-async function setupSsgAndStart() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
+// Start listening immediately to guarantee the HTTP port is bound to incoming traffic and is not blocked by slow Vite startup or exceptions.
+app.listen(PORT, "0.0.0.0", () => {
+  logToFile(`STAGELOG: Server listening on port ${PORT}`);
+  console.log(`Server started successfully. Running on http://localhost:${PORT}`);
+});
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server started successfully. Running on http://localhost:${PORT}`);
-  });
+// Configure Vite middleware in development asynchronously, and serve static output files in production
+async function setupSsgAsynchronously() {
+  try {
+    if (process.env.NODE_ENV !== "production") {
+      logToFile("STAGELOG: Starting Vite middleware initialization...");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      logToFile("STAGELOG: Vite middleware loaded successfully.");
+    } else {
+      logToFile("STAGELOG: Serving production static assets...");
+      const distPath = path.join(process.cwd(), 'dist');
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(distPath, 'index.html'));
+      });
+      logToFile("STAGELOG: Static production routing registered.");
+    }
+  } catch (err: any) {
+    logToFile(`STAGELOG ERROR in setupSsgAsynchronously: ${err.message || err}`);
+    console.error("Failed to setup frontend assets asynchronously:", err);
+  }
 }
 
-setupSsgAndStart();
+setupSsgAsynchronously();
