@@ -73,6 +73,21 @@ const getGeminiClient = () => {
   });
 };
 
+// API Endpoint: Simple Health & Configuration Check
+app.get("/api/health", (req, res) => {
+  logToFile("STAGELOG: Received GET /api/health");
+  try {
+    const apiKey = process.env.GEMINI_API_KEY;
+    res.json({
+      status: "ok",
+      apiKeyConfigured: !!apiKey && apiKey !== "PLACEHOLDER_API_KEY" && apiKey.length > 0,
+      apiKeyLength: apiKey ? apiKey.length : 0,
+    });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", error: error.message });
+  }
+});
+
 // API Endpoint: Analyze CV against Job Description (ATS Analysis)
 app.post("/api/analyze-ats", async (req, res) => {
   logToFile("STAGELOG: Received POST /api/analyze-ats");
@@ -84,6 +99,10 @@ app.post("/api/analyze-ats", async (req, res) => {
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
+    // Safety: Truncate oversized pasted text to 30k chars to prevent token bloat and gateway timeout
+    const trimmedCV = cv.length > 30000 ? cv.substring(0, 30000) + "\n... [Content truncated for processing speed]" : cv;
+    const trimmedJD = jd.length > 30000 ? jd.substring(0, 30000) + "\n... [Content truncated for processing speed]" : jd;
+
     const ai = getGeminiClient();
     logToFile("STAGELOG: Gemini client initialized successfully. Requesting content generation...");
     const response = await ai.models.generateContent({
@@ -91,10 +110,10 @@ app.post("/api/analyze-ats", async (req, res) => {
       contents: `Analyze the following CV against the provided Job Description. Provide an ATS compatibility score (0-100) and specific improvement suggestions.
       
       CV:
-      ${cv}
+      ${trimmedCV}
       
       Job Description:
-      ${jd}`,
+      ${trimmedJD}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -113,10 +132,16 @@ app.post("/api/analyze-ats", async (req, res) => {
     const text = response.text;
     logToFile(`STAGELOG: Gemini response received: ${!!text} (len ${text?.length || 0})`);
     if (!text) {
-      throw new Error("Empty response from Gemini ATS analysis model.");
+      throw new Error("Empty response received from Gemini ATS analysis.");
     }
 
-    res.json(JSON.parse(text));
+    // Clean markdown wrappers if any are returned by some models
+    let cleanedText = text.trim();
+    if (cleanedText.startsWith("```")) {
+      cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+    }
+
+    res.json(JSON.parse(cleanedText));
   } catch (error: any) {
     logToFile(`STAGELOG ERROR: at /api/analyze-ats: ${error.message || error}`);
     if (error.stack) {
@@ -137,6 +162,10 @@ app.post("/api/generate-tailored", async (req, res) => {
       logToFile("STAGELOG: Missing CV or JD in request body");
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
+
+    // Safety: Truncate oversized pasted text to 30k chars to prevent token bloat and gateway timeout
+    const trimmedCV = cv.length > 30000 ? cv.substring(0, 30000) + "\n... [Content truncated for processing speed]" : cv;
+    const trimmedJD = jd.length > 30000 ? jd.substring(0, 30000) + "\n... [Content truncated for processing speed]" : jd;
 
     const ai = getGeminiClient();
     logToFile("STAGELOG: Gemini client initialized successfully. Requesting content generation for tailoring...");
@@ -161,10 +190,10 @@ app.post("/api/generate-tailored", async (req, res) => {
       - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
 
       Master CV:
-      ${cv}
+      ${trimmedCV}
       
       Job Description:
-      ${jd}`,
+      ${trimmedJD}`,
       config: {
         maxOutputTokens: 4000,
         responseMimeType: "application/json",
@@ -183,10 +212,16 @@ app.post("/api/generate-tailored", async (req, res) => {
     const text = response.text;
     logToFile(`STAGELOG: Gemini response received: ${!!text} (len ${text?.length || 0})`);
     if (!text) {
-      throw new Error("Empty response from Gemini tailoring model.");
+      throw new Error("Empty response received from Gemini tailoring model.");
     }
 
-    res.json(JSON.parse(text));
+    // Clean markdown wrappers if any are returned by some models
+    let cleanedText = text.trim();
+    if (cleanedText.startsWith("```")) {
+      cleanedText = cleanedText.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+    }
+
+    res.json(JSON.parse(cleanedText));
   } catch (error: any) {
     logToFile(`STAGELOG ERROR: at /api/generate-tailored: ${error.message || error}`);
     if (error.stack) {
