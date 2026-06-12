@@ -4,10 +4,18 @@ import React from 'react';
 interface LayoutProps {
   children: React.ReactNode;
   onLogoClick?: () => void;
+  onRemoteJobsClick?: () => void;
   isLanding?: boolean;
+  currentStep?: string;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, isLanding }) => {
+export const Layout: React.FC<LayoutProps> = ({ 
+  children, 
+  onLogoClick, 
+  onRemoteJobsClick,
+  isLanding,
+  currentStep 
+}) => {
   return (
     <div className="min-h-screen flex flex-col bg-white">
       <header className="bg-white/80 backdrop-blur-md border-b border-slate-100 sticky top-0 z-50">
@@ -25,7 +33,14 @@ export const Layout: React.FC<LayoutProps> = ({ children, onLogoClick, isLanding
               </span>
             </div>
             
-            <nav className="hidden md:flex space-x-10">
+            <nav className="hidden md:flex space-x-10 items-center">
+              <button 
+                onClick={onRemoteJobsClick} 
+                className={`text-sm font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 ${currentStep === 'remote_jobs' ? 'text-blue-600 bg-blue-50' : 'text-slate-600 hover:text-blue-600 hover:bg-slate-50'}`}
+              >
+                <i className="fas fa-globe text-xs animate-pulse text-blue-500"></i>
+                Remote Jobs
+              </button>
               <a href="#features" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Features</a>
               <a href="#pricing" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">Pricing</a>
               <a href="#" className="text-sm font-medium text-slate-600 hover:text-blue-600 transition-colors">FAQ</a>

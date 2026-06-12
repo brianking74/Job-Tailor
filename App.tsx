@@ -5,6 +5,7 @@ import { StepIndicator } from './components/StepIndicator.tsx';
 import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments } from './types.ts';
 import { analyzeATS, generateTailoredContent } from './services/geminiService.ts';
 import { downloadAsPDF, downloadAsWord } from './utils/exportUtils.ts';
+import { RemoteJobs } from './components/RemoteJobs.tsx';
 
 // Global type declarations for CDN libraries
 declare const mammoth: any;
@@ -462,12 +463,24 @@ const App: React.FC = () => {
   return (
     <Layout 
       onLogoClick={() => setStep(AppStep.LANDING)} 
+      onRemoteJobsClick={() => setStep(AppStep.REMOTE_JOBS)}
       isLanding={step === AppStep.LANDING}
+      currentStep={step}
     >
       {showPaymentModal && <PaymentModal />}
       
       {step === AppStep.LANDING ? (
         <LandingPage />
+      ) : step === AppStep.REMOTE_JOBS ? (
+        <div className="max-w-5xl mx-auto py-12">
+          <RemoteJobs 
+            onTailorJob={(jobText, title, company) => {
+              setJdData({ text: jobText, role: title, company: company });
+              setStep(AppStep.UPLOAD_CV); // Automatically prompt for CV upload first as typical flow requirements
+            }}
+            onGoBack={() => setStep(AppStep.LANDING)}
+          />
+        </div>
       ) : (
         <div className="max-w-4xl mx-auto py-12">
           <StepIndicator currentStep={step} />

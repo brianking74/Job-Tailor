@@ -5,7 +5,8 @@ export enum AppStep {
   JOB_DETAILS = 'job_details',
   ANALYSIS = 'analysis',
   TAILORING = 'tailoring',
-  OUTREACH = 'outreach'
+  OUTREACH = 'outreach',
+  REMOTE_JOBS = 'remote_jobs'
 }
 
 export interface CVData {

@@ -2,5 +2,7 @@
   "name": "JobTailor - AI Job Application Suite",
   "description": "Professional tool for tailoring CVs and cover letters with AI, including ATS analysis and recruiter outreach preparation.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
