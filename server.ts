@@ -32,6 +32,12 @@ const PORT = 3000;
 
 app.use(express.json({ limit: "10mb" }));
 
+// Global middleware to log all incoming requests
+app.use((req, res, next) => {
+  logToFile(`GLOBAL_REQ: ${req.method} ${req.url}`);
+  next();
+});
+
 // Utility to write diagnostics to a workspace log file
 const logToFile = (message: string) => {
   try {

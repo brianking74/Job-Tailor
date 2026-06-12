@@ -1,0 +1,12 @@
+[2026-06-12T02:40:02.154Z] STAGELOG: Received POST /api/analyze-ats
+[2026-06-12T02:40:02.154Z] STAGELOG: /api/analyze-ats cv parsed: true (len 7), jd parsed: true (len 7)
+[2026-06-12T02:40:02.155Z] getGeminiClient: apiKey check. Exists: true, Starts with PLACEHOLDER: false, Length: 39
+[2026-06-12T02:40:02.156Z] STAGELOG: Gemini client initialized successfully. Requesting content generation...
+[2026-06-12T02:40:46.216Z] STAGELOG: Gemini response received: true (len 337)
+[2026-06-12T02:41:52.055Z] GLOBAL_REQ: GET /
+[2026-06-12T02:41:52.116Z] GLOBAL_REQ: POST /api/analyze-ats
+[2026-06-12T02:41:52.117Z] STAGELOG: Received POST /api/analyze-ats
+[2026-06-12T02:41:52.117Z] STAGELOG: /api/analyze-ats cv parsed: true (len 7), jd parsed: true (len 7)
+[2026-06-12T02:41:52.117Z] getGeminiClient: apiKey check. Exists: true, Starts with PLACEHOLDER: false, Length: 39
+[2026-06-12T02:41:52.118Z] STAGELOG: Gemini client initialized successfully. Requesting content generation...
+[2026-06-12T02:41:55.969Z] STAGELOG: Gemini response received: true (len 503)

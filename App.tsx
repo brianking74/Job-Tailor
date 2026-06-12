@@ -501,38 +501,58 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-bold mb-2 text-slate-900">Step 1: Upload Your Master CV</h2>
               <p className="text-slate-500 mb-10 text-lg">We use your master file as the DNA for all tailored variations.</p>
               
-              <div className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all ${isLoading ? 'border-blue-200 bg-blue-50/30 cursor-wait' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/10 cursor-pointer'}`}>
-                <input 
-                  type="file" 
-                  id="cv-upload" 
-                  className="hidden" 
-                  accept=".txt,.md,.rtf,.pdf,.docx" 
-                  onChange={handleFileUpload} 
-                  disabled={isLoading}
-                />
-                <label htmlFor="cv-upload" className={isLoading ? 'cursor-wait' : 'cursor-pointer'}>
-                  <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
-                    {isLoading ? (
-                      <i className="fas fa-circle-notch fa-spin text-3xl"></i>
-                    ) : (
-                      <i className="fas fa-file-upload text-3xl"></i>
-                    )}
+              {!cvData ? (
+                <div className={`border-2 border-dashed rounded-3xl p-16 text-center transition-all ${isLoading ? 'border-blue-200 bg-blue-50/30 cursor-wait' : 'border-slate-200 hover:border-blue-400 hover:bg-blue-50/10 cursor-pointer'}`}>
+                  <input 
+                    type="file" 
+                    id="cv-upload" 
+                    className="hidden" 
+                    accept=".txt,.md,.rtf,.pdf,.docx" 
+                    onChange={handleFileUpload} 
+                    disabled={isLoading}
+                  />
+                  <label htmlFor="cv-upload" className={isLoading ? 'cursor-wait' : 'cursor-pointer'}>
+                    <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                      {isLoading ? (
+                        <i className="fas fa-circle-notch fa-spin text-3xl"></i>
+                      ) : (
+                        <i className="fas fa-file-upload text-3xl"></i>
+                      )}
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 mb-2">
+                      {isLoading ? "Processing file..." : "Select your Resume"}
+                    </div>
+                    <p className="text-sm text-slate-400">PDF, DOCX, or Text (Max 5MB)</p>
+                  </label>
+                </div>
+              ) : (
+                <div className="p-10 border border-slate-200 bg-slate-50/50 rounded-3xl text-center animate-fadeIn">
+                  <div className="w-20 h-15 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-sm">
+                    <i className="fas fa-file-circle-check text-3xl"></i>
                   </div>
-                  <div className="text-xl font-bold text-slate-900 mb-2">
-                    {isLoading ? "Processing file..." : (cvData ? cvData.fileName : "Select your Resume")}
+                  <div className="text-xl font-bold text-slate-950 mb-2">Resume Successfully Selected</div>
+                  <p className="text-sm text-slate-500 mb-6 font-mono bg-white inline-block px-4 py-2 rounded-xl border border-slate-150 shadow-sm max-w-md truncate">
+                    {cvData.fileName}
+                  </p>
+                  
+                  <div className="flex justify-center gap-4">
+                    <button
+                      id="remove-cv-btn"
+                      onClick={() => {
+                        setCvData(null);
+                        localStorage.removeItem(STORAGE_KEY_CV);
+                      }}
+                      className="px-6 py-3 border border-slate-200 text-slate-600 rounded-full font-bold hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all flex items-center gap-2"
+                    >
+                      <i className="fas fa-trash-can"></i> Remove CV
+                    </button>
+                    <button 
+                      onClick={() => setStep(AppStep.JOB_DETAILS)}
+                      className="bg-blue-600 text-white px-8 py-3 rounded-full font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
+                    >
+                      Next: Paste Job Description <i className="fas fa-arrow-right"></i>
+                    </button>
                   </div>
-                  <p className="text-sm text-slate-400">PDF, DOCX, or Text (Max 5MB)</p>
-                </label>
-              </div>
-
-              {cvData && !isLoading && (
-                <div className="mt-10 flex justify-end">
-                  <button 
-                    onClick={() => setStep(AppStep.JOB_DETAILS)}
-                    className="bg-blue-600 text-white px-8 py-4 rounded-full font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center gap-2"
-                  >
-                    Next: Paste Job Description <i className="fas fa-arrow-right"></i>
-                  </button>
                 </div>
               )}
             </div>
@@ -544,12 +564,27 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-bold mb-2 text-slate-900">The Target Role</h2>
               <p className="text-slate-500 mb-10 text-lg">Paste the full job description. The more detail, the better the tailoring.</p>
               
-              <textarea
-                className="w-full h-80 p-6 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none text-slate-700 leading-relaxed"
-                placeholder="Paste job description here..."
-                value={jdData?.text || ''}
-                onChange={(e) => setJdData({ text: e.target.value })}
-              />
+              <div className="relative">
+                <textarea
+                  className="w-full h-80 p-6 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none text-slate-700 leading-relaxed pr-16"
+                  placeholder="Paste job description here..."
+                  value={jdData?.text || ''}
+                  onChange={(e) => setJdData({ text: e.target.value })}
+                />
+                {jdData?.text && (
+                  <button
+                    id="clear-jd-btn"
+                    onClick={() => {
+                      setJdData(null);
+                      localStorage.removeItem(STORAGE_KEY_JD);
+                    }}
+                    className="absolute right-4 top-4 bg-white/90 hover:bg-red-50 text-slate-400 hover:text-red-500 border border-slate-200 hover:border-red-200 p-2.5 rounded-xl transition-all shadow-sm flex items-center justify-center"
+                    title="Clear Job Description"
+                  >
+                    <i className="fas fa-trash-can"></i>
+                  </button>
+                )}
+              </div>
 
               <div className="mt-10 flex justify-between items-center">
                 <button 
