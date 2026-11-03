@@ -1,5 +1,7 @@
-import { getHealthStatus } from "../lib/ai";
-import type { ApiRequest, ApiResponse } from "../lib/http";
+// Explicit .js specifiers: required for Vercel's native-ESM function runtime
+// (package.json "type": "module") to resolve relative imports.
+import { getHealthStatus } from "../lib/ai.js";
+import type { ApiRequest, ApiResponse } from "../lib/http.js";
 
 export const maxDuration = 60;
 

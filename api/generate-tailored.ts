@@ -1,5 +1,5 @@
-import { runTailoredGeneration } from "../lib/ai";
-import { parseJsonBody, respondWithError, type ApiRequest, type ApiResponse } from "../lib/http";
+import { runTailoredGeneration } from "../lib/ai.js";
+import { parseJsonBody, respondWithError, type ApiRequest, type ApiResponse } from "../lib/http.js";
 
 export const maxDuration = 60;
 
