@@ -1,6 +1,7 @@
 {
   "name": "jobtailor---ai-job-application-suite",
   "private": true,
+  "type": "module",
   "version": "0.0.0",
   "scripts": {
     "dev": "tsx server.ts",
