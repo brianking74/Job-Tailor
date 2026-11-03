@@ -78,9 +78,9 @@ app.post("/api/analyze-ats", async (req, res) => {
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
-    logToFile("STAGELOG: Requesting Gemini content generation (ATS analysis)...");
+    logToFile("STAGELOG: Requesting AI content generation (ATS analysis)...");
     const result = await runAtsAnalysis(cv, jd);
-    logToFile("STAGELOG: Gemini ATS analysis completed successfully.");
+    logToFile("STAGELOG: AI ATS analysis completed successfully.");
     res.json(result);
   } catch (error: any) {
     logToFile(`STAGELOG ERROR: at /api/analyze-ats: ${error.message || error}`);
@@ -103,9 +103,9 @@ app.post("/api/generate-tailored", async (req, res) => {
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
-    logToFile("STAGELOG: Requesting Gemini content generation (tailoring)...");
+    logToFile("STAGELOG: Requesting AI content generation (tailoring)...");
     const result = await runTailoredGeneration(cv, jd);
-    logToFile("STAGELOG: Gemini tailoring completed successfully.");
+    logToFile("STAGELOG: AI tailoring completed successfully.");
     res.json(result);
   } catch (error: any) {
     logToFile(`STAGELOG ERROR: at /api/generate-tailored: ${error.message || error}`);

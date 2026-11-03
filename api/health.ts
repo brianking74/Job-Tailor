@@ -1,5 +1,5 @@
 /**
- * GET /api/health — connectivity + API key diagnostics for the frontend.
+ * GET /api/health — connectivity + AI key diagnostics for the frontend.
  *
  * SELF-CONTAINED BY DESIGN: no relative imports, because Vercel's function
  * runtime must be able to resolve every dependency on its own regardless of
@@ -19,11 +19,13 @@ interface ApiResponse {
 }
 
 function getHealthStatus() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const key = process.env.AI_API_KEY ?? process.env.OPENSCALE_API_KEY ?? "";
   return {
     status: "ok",
-    apiKeyConfigured: !!apiKey && apiKey !== "PLACEHOLDER_API_KEY" && apiKey.length > 0,
-    apiKeyLength: apiKey ? apiKey.length : 0,
+    apiKeyConfigured: !!key && key !== "PLACEHOLDER_API_KEY",
+    apiKeyLength: key ? key.length : 0,
+    provider: "openscale",
+    model: process.env.AI_MODEL || "deepseek/deepseek-v4.1-flash",
   };
 }
 

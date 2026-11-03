@@ -11,10 +11,10 @@ async function diagnoseError(originalError: Error): Promise<Error> {
     }
     const healthData = await healthResponse.json();
     if (!healthData.apiKeyConfigured) {
-      return new Error("GEMINI_API_KEY is not configured or is a placeholder. Please set your Gemini API Key in the Settings > Secrets panel of AI Studio.");
+      return new Error("AI_API_KEY is not configured. Add your OpenScale API key as the AI_API_KEY environment variable in Vercel (Settings > Environment Variables), then redeploy.");
     }
-    // If API key is configured and health is OK, the error is likely a transient Gemini network blockage or a high payload issue
-    return new Error(`Network/Gateway error occurs. Gemini API is loaded, but the request timed out or was cut by the proxy boundary. Please try submitting again with slightly less text or check your network.`);
+    // If API key is configured and health is OK, the error is likely a transient provider network blockage or a high payload issue
+    return new Error(`Network/Gateway error occurs. The AI service is loaded, but the request timed out or was cut by the proxy boundary. Please try submitting again with slightly less text or check your network.`);
   } catch (diagErr) {
     // If we can't play /api/health, the backend server process itself is down/offline
     return new Error("Unable to connect to the server. The backend might still be starting up, rebooting, or is unreachable. Please refresh and try again in a few seconds.");
@@ -46,7 +46,7 @@ export const analyzeATS = async (cv: string, jd: string): Promise<ATSAnalysis> =
 
     return response.json();
   } catch (err: any) {
-    if (err.message && (err.message.includes("GEMINI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
+    if (err.message && (err.message.includes("AI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
       throw err;
     }
     const errStr = (err.message || "").toLowerCase();
@@ -91,7 +91,7 @@ export const generateTailoredContent = async (cv: string, jd: string): Promise<T
 
     return response.json();
   } catch (err: any) {
-    if (err.message && (err.message.includes("GEMINI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
+    if (err.message && (err.message.includes("AI_API_KEY") || err.message.includes("API Key") || err.message.includes("API_KEY"))) {
       throw err;
     }
     const errStr = (err.message || "").toLowerCase();
