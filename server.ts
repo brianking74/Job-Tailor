@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { createServer as createViteServer } from "vite";
-import { getHealthStatus, runAtsAnalysis, runTailoredGeneration } from "./lib/ai";
+import { getHealthStatus, runAtsAnalysis, runTailoredGeneration, shortenCoverLetter } from "./lib/ai";
 
 // Load development environment variables from .env.local if present
 function loadDevEnv() {
@@ -96,15 +96,15 @@ app.post("/api/analyze-ats", async (req, res) => {
 app.post("/api/generate-tailored", async (req, res) => {
   logToFile("STAGELOG: Received POST /api/generate-tailored");
   try {
-    const { cv, jd } = req.body;
-    logToFile(`STAGELOG: /api/generate-tailored cv parsed: ${!!cv} (len ${cv?.length || 0}), jd parsed: ${!!jd} (len ${jd?.length || 0})`);
+    const { cv, jd, highlights, coverLetterLength } = req.body;
+    logToFile(`STAGELOG: /api/generate-tailored cv parsed: ${!!cv} (len ${cv?.length || 0}), jd parsed: ${!!jd} (len ${jd?.length || 0}), highlights: ${Array.isArray(highlights) ? highlights.filter(Boolean).length : 0}, clLength: ${coverLetterLength || "standard"}`);
     if (!cv || !jd) {
       logToFile("STAGELOG: Missing CV or JD in request body");
       return res.status(400).json({ error: "Missing CV or Job Description content." });
     }
 
     logToFile("STAGELOG: Requesting AI content generation (tailoring)...");
-    const result = await runTailoredGeneration(cv, jd);
+    const result = await runTailoredGeneration(cv, jd, { highlights, coverLetterLength });
     logToFile("STAGELOG: AI tailoring completed successfully.");
     res.json(result);
   } catch (error: any) {
@@ -114,6 +114,24 @@ app.post("/api/generate-tailored", async (req, res) => {
     }
     console.error("Error at /api/generate-tailored:", error);
     res.status(500).json({ error: error.message || "Failed to generate tailored content." });
+  }
+});
+
+// API Endpoint: Condense an existing cover letter ("Generate Shorter Version")
+app.post("/api/shorten-cover-letter", async (req, res) => {
+  logToFile("STAGELOG: Received POST /api/shorten-cover-letter");
+  try {
+    const { coverLetter, jd } = req.body;
+    if (!coverLetter || !String(coverLetter).trim()) {
+      return res.status(400).json({ error: "Missing cover letter content to shorten." });
+    }
+    const result = await shortenCoverLetter(coverLetter, jd);
+    logToFile("STAGELOG: AI shortening completed successfully.");
+    res.json(result);
+  } catch (error: any) {
+    logToFile(`STAGELOG ERROR: at /api/shorten-cover-letter: ${error.message || error}`);
+    console.error("Error at /api/shorten-cover-letter:", error);
+    res.status(500).json({ error: error.message || "Failed to shorten the cover letter." });
   }
 });
 

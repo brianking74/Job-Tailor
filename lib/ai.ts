@@ -35,8 +35,49 @@ export const ATS_MAX_TOKENS = 2000;
 export const CV_MAX_TOKENS = 4500;
 export const COVER_LETTER_MAX_TOKENS = 1600;
 export const EMAIL_MAX_TOKENS = 1000;
+export const SHORTEN_MAX_TOKENS = 1200;
 /** Vercel functions are capped at 60s; abort the upstream call before that. */
 const REQUEST_TIMEOUT_MS = 55000;
+
+/** User-selected cover letter length. */
+export type CoverLetterLength = "standard" | "short" | "brief";
+
+/** Optional user input for the tailored generation. */
+export interface TailoringOptions {
+  /** Up to 3 free-text skills/achievements the user wants woven into every asset. */
+  highlights?: string[];
+  /** Target cover letter length. Default: "standard". */
+  coverLetterLength?: CoverLetterLength;
+}
+
+const COVER_LETTER_LENGTH_PRESETS: Record<
+  CoverLetterLength,
+  { wordRange: string; maxTokens: number }
+> = {
+  standard: { wordRange: "250 - 400 words total.", maxTokens: COVER_LETTER_MAX_TOKENS },
+  short: { wordRange: "150 - 250 words total.", maxTokens: 1100 },
+  brief: { wordRange: "80 - 150 words total.", maxTokens: 800 },
+};
+
+/** Clean + clamp user highlights (max 3, max 300 chars each) and build a prompt block. */
+export function normalizeHighlights(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((h): h is string => typeof h === "string")
+    .map((h) => h.trim().slice(0, 300))
+    .filter((h) => h.length > 0)
+    .slice(0, 3);
+}
+
+/** Prompt block appended to EVERY tailored document when the user supplied highlights. */
+export function buildHighlightsBlock(highlights: string[]): string {
+  if (highlights.length === 0) return "";
+  return (
+    "\n\nUSER-HIGHLIGHTED SKILLS / POINTS TO EMPHASISE (provided by the candidate):\n" +
+    highlights.map((h, i) => `${i + 1}. ${h}`).join("\n") +
+    "\nWeave these naturally into the output. Stay truthful: expand on them only with facts present in the Master CV."
+  );
+}
 
 export class MissingApiKeyError extends Error {
   constructor() {
@@ -415,11 +456,20 @@ async function generateTailoredDoc(
  * Three independent AI calls run in PARALLEL (Promise.all) — each has a small,
  * focused output so the slowest one still finishes well inside the 55s budget.
  */
-export async function runTailoredGeneration(cv: string, jd: string): Promise<TailoredDocuments> {
+export async function runTailoredGeneration(
+  cv: string,
+  jd: string,
+  options: TailoringOptions = {}
+): Promise<TailoredDocuments> {
   const cfg = getAiConfig();
   const trimmedCV = trimInput(cv);
   const trimmedJD = trimInput(jd);
+  const highlights = normalizeHighlights(options.highlights);
+  const lengthPreset =
+    COVER_LETTER_LENGTH_PRESETS[options.coverLetterLength ?? "standard"] ??
+    COVER_LETTER_LENGTH_PRESETS.standard;
 
+  const highlightsBlock = buildHighlightsBlock(highlights);
   const sharedContext = `\n\nMaster CV:\n${trimmedCV}\n\nJob Description:\n${trimmedJD}`;
 
   const [cvOut, coverLetter, emailBody] = await Promise.all([
@@ -436,7 +486,7 @@ export async function runTailoredGeneration(cv: string, jd: string): Promise<Tai
       - IMPORTANT: Output the COMPLETE CV. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${sharedContext}`,
+      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${highlightsBlock}${sharedContext}`,
       { maxTokens: CV_MAX_TOKENS, schemaName: "tailored_cv", schema: CV_SCHEMA }
     ),
     generateTailoredDoc(
@@ -452,12 +502,12 @@ export async function runTailoredGeneration(cv: string, jd: string): Promise<Tai
           2. Body Paragraph 1: Connect your background specifically to the most important skill in the JD.
           3. Body Paragraph 2: Highlight a specific achievement (with numbers if possible) that proves you can solve their problems.
           4. Conclusion & Call to Action: Professional sign-off.
-      - Length: 250 - 400 words total.
+      - Length: ${lengthPreset.wordRange}
       - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${sharedContext}`,
-      { maxTokens: COVER_LETTER_MAX_TOKENS, schemaName: "tailored_cover_letter", schema: COVER_LETTER_SCHEMA }
+      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${highlightsBlock}${sharedContext}`,
+      { maxTokens: lengthPreset.maxTokens, schemaName: "tailored_cover_letter", schema: COVER_LETTER_SCHEMA }
     ),
     generateTailoredDoc(
       cfg,
@@ -471,10 +521,79 @@ export async function runTailoredGeneration(cv: string, jd: string): Promise<Tai
       - IMPORTANT: Ensure the email is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${sharedContext}`,
+      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${highlightsBlock}${sharedContext}`,
       { maxTokens: EMAIL_MAX_TOKENS, schemaName: "tailored_email", schema: EMAIL_SCHEMA }
     ),
   ]);
 
   return { cv: cvOut, coverLetter, emailBody };
+}
+
+const SHORTEN_SCHEMA = {
+  type: "object",
+  properties: {
+    shortenedCoverLetter: { type: "string", description: "The condensed cover letter" },
+  },
+  required: ["shortenedCoverLetter"],
+  additionalProperties: false,
+};
+
+function countWords(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Condense an existing cover letter to roughly 55% of its current length
+ * (clamped to 80-250 words), keeping its strongest points and structure.
+ * Used by the "Generate Shorter Version" button on the results page.
+ */
+export async function shortenCoverLetter(
+  coverLetter: string,
+  jd?: string
+): Promise<{ coverLetter: string }> {
+  const cfg = getAiConfig();
+  const letter = String(coverLetter ?? "").trim();
+  if (!letter) {
+    throw new Error("No cover letter content to shorten.");
+  }
+  const trimmedLetter = letter.length > 20000 ? letter.slice(0, 20000) : letter;
+  const trimmedJD = jd ? trimInput(jd) : "";
+  const targetWords = Math.min(250, Math.max(80, Math.round(countWords(trimmedLetter) * 0.55)));
+
+  const messages: ChatMessage[] = [
+    {
+      role: "system",
+      content:
+        "You are a world-class professional career consultant and expert copywriter. Respond ONLY with a valid JSON object.",
+    },
+    {
+      role: "user",
+      content: `Condense the cover letter below to approximately ${targetWords} words.
+
+      RULES:
+      - Keep the strongest achievements, the professional structure (greeting, body, call to action, sign-off) and the original tone.
+      - Do NOT add new claims, facts, skills or numbers that are not in the original letter.
+      - Remove filler and redundancy, not substance.
+      - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
+      ${trimmedJD ? `\n      The letter was written for this Job Description (for context only):\n      ${trimmedJD}` : ""}
+      OUTPUT FORMAT:
+      - Respond with ONLY a JSON object with exactly one key: "shortenedCoverLetter" (string).
+
+      Cover letter to condense:
+      ${trimmedLetter}`,
+    },
+  ];
+
+  const parsed = await chatJson<any>(cfg, messages, {
+    maxTokens: SHORTEN_MAX_TOKENS,
+    schemaName: "shortened_cover_letter",
+    schema: SHORTEN_SCHEMA,
+    reasoningEffort: "none",
+  });
+
+  const value = typeof parsed?.shortenedCoverLetter === "string" ? parsed.shortenedCoverLetter.trim() : "";
+  if (!value) {
+    throw new Error('The AI response was missing the "shortenedCoverLetter" document. Please try again.');
+  }
+  return { coverLetter: value };
 }

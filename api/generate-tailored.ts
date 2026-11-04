@@ -15,6 +15,9 @@
  * independent JSON-schema calls run in parallel (Promise.all), each with a
  * small output budget — wall time equals the slowest single document instead
  * of the sum of all three.
+ *
+ * Accepts optional body fields: highlights (string[], max 3) and
+ * coverLetterLength ("standard" | "short" | "brief").
  */
 
 const DEFAULT_BASE_URL = "https://api.openscale.so/v1";
@@ -24,6 +27,37 @@ const CV_MAX_TOKENS = 4500;
 const COVER_LETTER_MAX_TOKENS = 1600;
 const EMAIL_MAX_TOKENS = 1000;
 const REQUEST_TIMEOUT_MS = 55000; // Vercel functions are capped at 60s
+
+type CoverLetterLength = "standard" | "short" | "brief";
+
+const COVER_LETTER_LENGTH_PRESETS: Record<
+  CoverLetterLength,
+  { wordRange: string; maxTokens: number }
+> = {
+  standard: { wordRange: "250 - 400 words total.", maxTokens: COVER_LETTER_MAX_TOKENS },
+  short: { wordRange: "150 - 250 words total.", maxTokens: 1100 },
+  brief: { wordRange: "80 - 150 words total.", maxTokens: 800 },
+};
+
+/** Clean + clamp user highlights (max 3, max 300 chars each) and build a prompt block. */
+function normalizeHighlights(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((h): h is string => typeof h === "string")
+    .map((h) => h.trim().slice(0, 300))
+    .filter((h) => h.length > 0)
+    .slice(0, 3);
+}
+
+/** Prompt block appended to EVERY tailored document when the user supplied highlights. */
+function buildHighlightsBlock(highlights: string[]): string {
+  if (highlights.length === 0) return "";
+  return (
+    "\n\nUSER-HIGHLIGHTED SKILLS / POINTS TO EMPHASISE (provided by the candidate):\n" +
+    highlights.map((h, i) => `${i + 1}. ${h}`).join("\n") +
+    "\nWeave these naturally into the output. Stay truthful: expand on them only with facts present in the Master CV."
+  );
+}
 
 interface ApiRequest {
   method?: string;
@@ -238,11 +272,17 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       return;
     }
 
-    const { cv, jd } = parseJsonBody(req.body);
+    const parsedBody = parseJsonBody(req.body);
+    const { cv, jd } = parsedBody;
     if (!cv || !jd) {
       res.status(400).json({ error: "Missing CV or Job Description content." });
       return;
     }
+    const highlights = normalizeHighlights(parsedBody.highlights);
+    const requestedLength = (
+      typeof parsedBody.coverLetterLength === "string" ? parsedBody.coverLetterLength : "standard"
+    ) as CoverLetterLength;
+    const lengthPreset = COVER_LETTER_LENGTH_PRESETS[requestedLength] ?? COVER_LETTER_LENGTH_PRESETS.standard;
 
     const cfg = {
       baseUrl: (process.env.AI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, ""),
@@ -252,6 +292,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const trimmedCV = trimInput(String(cv));
     const trimmedJD = trimInput(String(jd));
+    const highlightsBlock = buildHighlightsBlock(highlights);
     const sharedContext = `\n\nMaster CV:\n${trimmedCV}\n\nJob Description:\n${trimmedJD}`;
 
     const [cvOut, coverLetter, emailBody] = await Promise.all([
@@ -270,13 +311,13 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       - IMPORTANT: Output the COMPLETE CV. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${sharedContext}`,
+      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${highlightsBlock}${sharedContext}`,
       }),
       generateTailoredDoc(cfg, {
         key: "coverLetter",
         schemaName: "tailored_cover_letter",
         schema: COVER_LETTER_SCHEMA,
-        maxTokens: COVER_LETTER_MAX_TOKENS,
+        maxTokens: lengthPreset.maxTokens,
         instructions: `Write a high-impact cover letter for the Job Description below, based on the master CV.
 
       COVER LETTER GUIDELINES (MANDATORY STRUCTURE):
@@ -287,11 +328,11 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
           2. Body Paragraph 1: Connect your background specifically to the most important skill in the JD.
           3. Body Paragraph 2: Highlight a specific achievement (with numbers if possible) that proves you can solve their problems.
           4. Conclusion & Call to Action: Professional sign-off.
-      - Length: 250 - 400 words total.
+      - Length: ${lengthPreset.wordRange}
       - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${sharedContext}`,
+      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${highlightsBlock}${sharedContext}`,
       }),
       generateTailoredDoc(cfg, {
         key: "emailBody",
@@ -307,7 +348,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       - IMPORTANT: Ensure the email is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${sharedContext}`,
+      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${highlightsBlock}${sharedContext}`,
       }),
     ]);
 

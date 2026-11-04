@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Layout } from './components/Layout.tsx';
 import { StepIndicator } from './components/StepIndicator.tsx';
 import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments } from './types.ts';
-import { analyzeATS, generateTailoredContent } from './services/geminiService.ts';
+import { analyzeATS, generateTailoredContent, shortenCoverLetter } from './services/geminiService.ts';
 import { downloadAsPDF, downloadAsWord } from './utils/exportUtils.ts';
 import { RemoteJobs } from './components/RemoteJobs.tsx';
 
@@ -15,6 +15,8 @@ const App: React.FC = () => {
   // Constants for localStorage keys
   const STORAGE_KEY_CV = 'jobtailor_cv_v1';
   const STORAGE_KEY_JD = 'jobtailor_jd_v1';
+  const STORAGE_KEY_HL = 'jobtailor_highlights_v1';
+  const STORAGE_KEY_CLLEN = 'jobtailor_cl_length_v1';
 
   const [step, setStep] = useState<AppStep>(AppStep.LANDING);
   
@@ -68,6 +70,36 @@ const App: React.FC = () => {
       localStorage.removeItem(STORAGE_KEY_JD);
     }
   }, [jdData]);
+
+  // Optional user highlights (up to 3) woven into every tailored asset
+  const [highlights, setHighlights] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_HL);
+      const parsed = saved ? JSON.parse(saved) : null;
+      if (Array.isArray(parsed)) {
+        return [0, 1, 2].map((i) => (typeof parsed[i] === 'string' ? parsed[i] : ''));
+      }
+    } catch (e) {
+      console.error('Failed to load highlights from storage', e);
+    }
+    return ['', '', ''];
+  });
+
+  // Target cover letter length for the tailored generation
+  const [coverLetterLength, setCoverLetterLength] = useState<'standard' | 'short' | 'brief'>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY_CLLEN);
+    return saved === 'short' || saved === 'brief' ? saved : 'standard';
+  });
+
+  const [isShortening, setIsShortening] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_HL, JSON.stringify(highlights));
+  }, [highlights]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_CLLEN, coverLetterLength);
+  }, [coverLetterLength]);
 
   const extractTextFromPDF = async (arrayBuffer: ArrayBuffer): Promise<string> => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -164,7 +196,10 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await generateTailoredContent(cvData.content, jdData.text);
+      const result = await generateTailoredContent(cvData.content, jdData.text, {
+        highlights,
+        coverLetterLength,
+      });
       setTailored(result);
       setStep(AppStep.TAILORING);
     } catch (err: any) {
@@ -172,6 +207,21 @@ const App: React.FC = () => {
       setError(`Failed to generate tailored documents: ${err.message || 'Unknown error'}`);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleShortenCoverLetter = async () => {
+    if (!tailored || isShortening) return;
+    setIsShortening(true);
+    setError(null);
+    try {
+      const result = await shortenCoverLetter(tailored.coverLetter, jdData?.text);
+      setTailored({ ...tailored, coverLetter: result.coverLetter });
+    } catch (err: any) {
+      console.error(err);
+      setError(`Failed to shorten the cover letter: ${err.message || 'Unknown error'}`);
+    } finally {
+      setIsShortening(false);
     }
   };
 
@@ -776,6 +826,58 @@ const App: React.FC = () => {
                 </div>
               </div>
 
+              {/* Personal Touches: optional highlights + cover letter length */}
+              <div className="bg-white p-10 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100">
+                <h3 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-3 flex-wrap">
+                  <i className="fas fa-highlighter text-blue-600"></i> Personal Touches
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Optional</span>
+                </h3>
+                <p className="text-slate-500 mb-8">Add up to 3 skills, achievements or points you want the AI to include in your tailored CV, cover letter and email.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
+                  {highlights.map((value, idx) => (
+                    <input
+                      key={idx}
+                      type="text"
+                      maxLength={300}
+                      value={value}
+                      onChange={(e) => setHighlights((prev) => prev.map((h, i) => (i === idx ? e.target.value : h)))}
+                      placeholder={
+                        idx === 0
+                          ? 'e.g. Led checkout migration, +18% conversion'
+                          : idx === 1
+                          ? 'e.g. AWS Certified Solutions Architect'
+                          : 'e.g. Managed a team of 6 engineers'
+                      }
+                      className="w-full p-4 border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-blue-50 focus:border-blue-500 transition-all text-sm"
+                    />
+                  ))}
+                </div>
+
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-3">Cover Letter Length</label>
+                <div className="flex flex-col sm:flex-row gap-2 p-1.5 bg-slate-100 rounded-2xl max-w-2xl">
+                  {([
+                    { id: 'standard', label: 'Standard', hint: '250–400 words' },
+                    { id: 'short', label: 'Short', hint: '150–250 words' },
+                    { id: 'brief', label: 'Brief', hint: '80–150 words' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setCoverLetterLength(opt.id)}
+                      className={`flex-1 py-3 px-4 rounded-xl font-bold text-sm transition-all ${
+                        coverLetterLength === opt.id
+                          ? 'bg-white text-slate-900 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+                      }`}
+                    >
+                      {opt.label}
+                      <span className="block text-[10px] font-medium text-slate-400 mt-0.5">{opt.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex justify-between items-center">
                 <button onClick={() => setStep(AppStep.JOB_DETAILS)} className="text-slate-500 font-bold hover:text-slate-900">Modify JD</button>
                 <button 
@@ -822,6 +924,23 @@ const App: React.FC = () => {
                   </div>
                   <div className="flex-1 bg-slate-50 p-8 rounded-2xl border border-slate-100 overflow-y-auto text-sm leading-relaxed whitespace-pre-wrap text-slate-700 shadow-inner">
                     {tailored.coverLetter}
+                  </div>
+                  <div className="mt-4 flex justify-between items-center">
+                    <span className="text-xs text-slate-400 font-medium">
+                      {tailored.coverLetter.split(/\s+/).filter(Boolean).length} words
+                    </span>
+                    <button
+                      onClick={handleShortenCoverLetter}
+                      disabled={isShortening}
+                      title="Condense this cover letter to roughly half its length"
+                      className="text-sm font-bold text-blue-600 bg-blue-50 px-5 py-2.5 rounded-full hover:bg-blue-100 transition-colors flex items-center gap-2 disabled:opacity-60"
+                    >
+                      {isShortening ? (
+                        <>Condensing <i className="fas fa-spinner fa-spin"></i></>
+                      ) : (
+                        <><i className="fas fa-compress"></i> Generate Shorter Version</>
+                      )}
+                    </button>
                   </div>
                 </div>
               </div>
