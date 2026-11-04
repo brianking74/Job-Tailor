@@ -25,5 +25,11 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "exclude": [
+    "worker",
+    "job-ingestion",
+    "dist",
+    "node_modules"
+  ]
 }

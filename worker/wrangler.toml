@@ -1,0 +1,15 @@
+name = "jobtailor-auth"
+main = "src/index.ts"
+compatibility_date = "2025-12-01"
+
+[vars]
+# Comma-separated origins allowed to call the auth API (CORS).
+# Local dev origins are included so the SPA can be tested against a local worker.
+CORS_ORIGINS = "https://job-tailor-pi.vercel.app,http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jobtailor-auth"
+# Filled in with the real id after `wrangler d1 create jobtailor-auth`.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
