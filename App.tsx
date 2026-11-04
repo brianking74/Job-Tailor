@@ -466,6 +466,7 @@ const App: React.FC = () => {
     <Layout 
       onLogoClick={() => setStep(AppStep.LANDING)} 
       onRemoteJobsClick={() => setStep(AppStep.REMOTE_JOBS)}
+      onGetStartedClick={() => setStep(AppStep.UPLOAD_CV)}
       isLanding={step === AppStep.LANDING}
       currentStep={step}
     >

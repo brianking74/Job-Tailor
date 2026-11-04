@@ -9,12 +9,20 @@
  * Provider: any OpenAI-compatible chat-completions endpoint, currently
  * OpenScale (https://api.openscale.so/v1) running deepseek/deepseek-v4.1-flash.
  * Env vars: AI_API_KEY (required), AI_BASE_URL / AI_MODEL (optional overrides).
+ *
+ * TIMEOUT FIX: generating all three documents in ONE call (~8000 output tokens
+ * + reasoning) blew past Vercel's 60s function cap. The work is now THREE
+ * independent JSON-schema calls run in parallel (Promise.all), each with a
+ * small output budget — wall time equals the slowest single document instead
+ * of the sum of all three.
  */
 
 const DEFAULT_BASE_URL = "https://api.openscale.so/v1";
 const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 const MAX_INPUT_CHARS = 30000;
-const TAILORED_MAX_TOKENS = 8000;
+const CV_MAX_TOKENS = 4500;
+const COVER_LETTER_MAX_TOKENS = 1600;
+const EMAIL_MAX_TOKENS = 1000;
 const REQUEST_TIMEOUT_MS = 55000; // Vercel functions are capped at 60s
 
 interface ApiRequest {
@@ -60,26 +68,62 @@ function extractJsonObject(raw: string): string {
   return t.slice(first, last + 1);
 }
 
-const TAILORED_SCHEMA = {
+/** One schema per document — each parallel call enforces a single-string output. */
+const CV_SCHEMA = {
   type: "object",
   properties: {
     cv: { type: "string", description: "Markdown formatted tailored CV" },
-    coverLetter: { type: "string", description: "Professional cover letter including contact header placeholders" },
-    emailBody: { type: "string", description: "A concise, effective outreach email" }
   },
-  required: ["cv", "coverLetter", "emailBody"],
-  additionalProperties: false
+  required: ["cv"],
+  additionalProperties: false,
 };
 
-async function chatJson(cfg: { baseUrl: string; model: string; apiKey: string }, messages: Array<{ role: string; content: string }>, maxTokens: number, reasoningEffort: string) {
+const COVER_LETTER_SCHEMA = {
+  type: "object",
+  properties: {
+    coverLetter: { type: "string", description: "Professional cover letter including contact header placeholders" },
+  },
+  required: ["coverLetter"],
+  additionalProperties: false,
+};
+
+const EMAIL_SCHEMA = {
+  type: "object",
+  properties: {
+    emailBody: { type: "string", description: "A concise, effective outreach email" },
+  },
+  required: ["emailBody"],
+  additionalProperties: false,
+};
+
+interface ChatMsg {
+  role: string;
+  content: string;
+}
+
+interface DocRequest {
+  key: "cv" | "coverLetter" | "emailBody";
+  schemaName: string;
+  schema: Record<string, unknown>;
+  maxTokens: number;
+  instructions: string;
+}
+
+async function chatJsonOnce(
+  cfg: { baseUrl: string; model: string; apiKey: string },
+  messages: ChatMsg[],
+  schemaName: string,
+  schema: Record<string, unknown>,
+  maxTokens: number
+): Promise<string> {
   const body = {
     model: cfg.model,
     messages,
     max_tokens: maxTokens,
-    reasoning_effort: reasoningEffort,
+    reasoning_effort: "none",
     response_format: {
       type: "json_schema",
-      json_schema: { name: "tailored_documents", strict: true, schema: TAILORED_SCHEMA },
+      json_schema: { name: schemaName, strict: true, schema },
     },
   };
 
@@ -98,7 +142,9 @@ async function chatJson(cfg: { baseUrl: string; model: string; apiKey: string },
     });
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      throw new Error(`The AI request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s. Please try again.`);
+      const e = new Error(`The AI request timed out after ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s. Please try again.`);
+      (e as any).isTimeout = true;
+      throw e;
     }
     throw new Error(`Could not reach the AI provider (${err?.message || err}). Please try again.`);
   } finally {
@@ -114,7 +160,9 @@ async function chatJson(cfg: { baseUrl: string; model: string; apiKey: string },
     } catch {
       /* keep raw slice */
     }
-    throw new Error(`AI provider returned HTTP ${res.status}: ${detail}`);
+    const e = new Error(`AI provider returned HTTP ${res.status}: ${detail}`);
+    (e as any).httpStatus = res.status;
+    throw e;
   }
 
   const data: any = await res.json();
@@ -129,6 +177,49 @@ async function chatJson(cfg: { baseUrl: string; model: string; apiKey: string },
     throw new Error("Empty response received from the AI model.");
   }
   return content;
+}
+
+/** Single retry for transient provider failures (429 / 5xx / fast network errors). */
+async function chatJson(
+  cfg: { baseUrl: string; model: string; apiKey: string },
+  messages: ChatMsg[],
+  schemaName: string,
+  schema: Record<string, unknown>,
+  maxTokens: number
+): Promise<string> {
+  try {
+    return await chatJsonOnce(cfg, messages, schemaName, schema, maxTokens);
+  } catch (err: any) {
+    const status = err?.httpStatus;
+    const transient = status === 429 || (typeof status === "number" && status >= 500) || !status;
+    if (!transient || err?.isTimeout) throw err;
+    await new Promise((r) => setTimeout(r, 1200));
+    return chatJsonOnce(cfg, messages, schemaName, schema, maxTokens);
+  }
+}
+
+/** Generate ONE document (cv | coverLetter | emailBody) via a focused JSON-schema call. */
+async function generateTailoredDoc(
+  cfg: { baseUrl: string; model: string; apiKey: string },
+  doc: DocRequest
+): Promise<string> {
+  const messages: ChatMsg[] = [
+    {
+      role: "system",
+      content:
+        "You are a world-class professional career consultant and expert copywriter. Respond ONLY with a valid JSON object.",
+    },
+    { role: "user", content: doc.instructions },
+  ];
+
+  const raw = await chatJson(cfg, messages, doc.schemaName, doc.schema, doc.maxTokens);
+  const parsed = JSON.parse(extractJsonObject(raw));
+
+  const value = typeof parsed?.[doc.key] === "string" ? parsed[doc.key].trim() : "";
+  if (!value) {
+    throw new Error(`The AI response was missing the "${doc.key}" document. Please try again.`);
+  }
+  return value;
 }
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
@@ -161,22 +252,32 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
 
     const trimmedCV = trimInput(String(cv));
     const trimmedJD = trimInput(String(jd));
+    const sharedContext = `\n\nMaster CV:\n${trimmedCV}\n\nJob Description:\n${trimmedJD}`;
 
-    const raw = await chatJson(
-      cfg,
-      [
-        {
-          role: "system",
-          content:
-            "You are a world-class professional career consultant and expert copywriter. Respond ONLY with a valid JSON object.",
-        },
-        {
-          role: "user",
-          content: `Your task is to generate a tailored CV, a high-impact cover letter, and a concise outreach email.
+    const [cvOut, coverLetter, emailBody] = await Promise.all([
+      generateTailoredDoc(cfg, {
+        key: "cv",
+        schemaName: "tailored_cv",
+        schema: CV_SCHEMA,
+        maxTokens: CV_MAX_TOKENS,
+        instructions: `Tailor the master CV below for the target Job Description.
 
       CV GUIDELINES:
-      - Update the master CV to highlight achievements relevant to the Job Description.
-      - Ensure it remains professional and standard in format.
+      - Update the master CV to highlight achievements and skills relevant to the Job Description.
+      - Reorder and emphasise relevant experience, but stay truthful to the master CV: never invent employers, dates, titles or credentials.
+      - Professional, standard, ATS-friendly format in clean Markdown.
+      - Keep it concise (equivalent of one page, roughly 500-650 words).
+      - IMPORTANT: Output the COMPLETE CV. Do not cut off mid-sentence.
+
+      OUTPUT FORMAT:
+      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${sharedContext}`,
+      }),
+      generateTailoredDoc(cfg, {
+        key: "coverLetter",
+        schemaName: "tailored_cover_letter",
+        schema: COVER_LETTER_SCHEMA,
+        maxTokens: COVER_LETTER_MAX_TOKENS,
+        instructions: `Write a high-impact cover letter for the Job Description below, based on the master CV.
 
       COVER LETTER GUIDELINES (MANDATORY STRUCTURE):
       - Tone: Professional, confident, and engaging. Avoid generic AI fluff.
@@ -189,35 +290,26 @@ export default async function handler(req: ApiRequest, res: ApiResponse) {
       - Length: 250 - 400 words total.
       - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
 
+      OUTPUT FORMAT:
+      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${sharedContext}`,
+      }),
+      generateTailoredDoc(cfg, {
+        key: "emailBody",
+        schemaName: "tailored_email",
+        schema: EMAIL_SCHEMA,
+        maxTokens: EMAIL_MAX_TOKENS,
+        instructions: `Write a concise, effective outreach email to accompany the job application described below.
+
       EMAIL GUIDELINES:
-      - A concise, effective outreach email (120 - 180 words) for the application.
+      - 120 - 180 words for the application.
       - The first line must be the subject line in the form: Subject: ...
       - Reference the attached CV and cover letter.
+      - IMPORTANT: Ensure the email is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly these keys: "cv", "coverLetter", "emailBody" (all strings).
-
-      Master CV:
-      ${trimmedCV}
-      
-      Job Description:
-      ${trimmedJD}`,
-        },
-      ],
-      TAILORED_MAX_TOKENS,
-      "low"
-    );
-
-    const parsed = JSON.parse(extractJsonObject(raw));
-
-    const cvOut = typeof parsed?.cv === "string" ? parsed.cv.trim() : "";
-    const coverLetter = typeof parsed?.coverLetter === "string" ? parsed.coverLetter.trim() : "";
-    const emailBody = typeof parsed?.emailBody === "string" ? parsed.emailBody.trim() : "";
-    if (!cvOut || !coverLetter || !emailBody) {
-      throw new Error(
-        "The AI response was missing one or more required documents (cv, coverLetter, emailBody). Please try again."
-      );
-    }
+      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${sharedContext}`,
+      }),
+    ]);
 
     res.status(200).json({ cv: cvOut, coverLetter, emailBody });
   } catch (error: any) {

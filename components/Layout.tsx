@@ -5,6 +5,8 @@ interface LayoutProps {
   children: React.ReactNode;
   onLogoClick?: () => void;
   onRemoteJobsClick?: () => void;
+  /** Header CTA — same flow as the hero "Start Applying Now" button. */
+  onGetStartedClick?: () => void;
   isLanding?: boolean;
   currentStep?: string;
 }
@@ -13,6 +15,7 @@ export const Layout: React.FC<LayoutProps> = ({
   children, 
   onLogoClick, 
   onRemoteJobsClick,
+  onGetStartedClick,
   isLanding,
   currentStep 
 }) => {
@@ -54,7 +57,7 @@ export const Layout: React.FC<LayoutProps> = ({
                 Log In
               </button>
               <button 
-                onClick={onLogoClick}
+                onClick={onGetStartedClick ?? onLogoClick}
                 className="bg-blue-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all hover:-translate-y-0.5"
               >
                 Get Started

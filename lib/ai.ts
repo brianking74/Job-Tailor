@@ -26,7 +26,15 @@ export const DEFAULT_BASE_URL = "https://api.openscale.so/v1";
 export const DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash";
 export const MAX_INPUT_CHARS = 30000;
 export const ATS_MAX_TOKENS = 2000;
-export const TAILORED_MAX_TOKENS = 8000;
+/**
+ * The Tailored Suite used to be ONE 8000-token call, which DeepSeek on OpenScale
+ * could not finish inside Vercel's 60s function cap (55s safety margin).
+ * It is now THREE independent calls run in parallel, each with a much smaller
+ * output budget, so wall time = slowest single document, not the sum.
+ */
+export const CV_MAX_TOKENS = 4500;
+export const COVER_LETTER_MAX_TOKENS = 1600;
+export const EMAIL_MAX_TOKENS = 1000;
 /** Vercel functions are capped at 60s; abort the upstream call before that. */
 const REQUEST_TIMEOUT_MS = 55000;
 
@@ -344,36 +352,97 @@ export async function runAtsAnalysis(cv: string, jd: string): Promise<ATSAnalysi
   return normalizeAtsAnalysis(parsed);
 }
 
-const TAILORED_SCHEMA = {
+/** One schema per document — each parallel call enforces a single-string output. */
+const CV_SCHEMA = {
   type: "object",
   properties: {
     cv: { type: "string", description: "Markdown formatted tailored CV" },
-    coverLetter: { type: "string", description: "Professional cover letter including contact header placeholders" },
-    emailBody: { type: "string", description: "A concise, effective outreach email" }
   },
-  required: ["cv", "coverLetter", "emailBody"],
-  additionalProperties: false
+  required: ["cv"],
+  additionalProperties: false,
 };
 
-/** Generate tailored CV, cover letter and outreach email from master CV + JD. */
-export async function runTailoredGeneration(cv: string, jd: string): Promise<TailoredDocuments> {
-  const cfg = getAiConfig();
-  const trimmedCV = trimInput(cv);
-  const trimmedJD = trimInput(jd);
+const COVER_LETTER_SCHEMA = {
+  type: "object",
+  properties: {
+    coverLetter: { type: "string", description: "Professional cover letter including contact header placeholders" },
+  },
+  required: ["coverLetter"],
+  additionalProperties: false,
+};
 
+const EMAIL_SCHEMA = {
+  type: "object",
+  properties: {
+    emailBody: { type: "string", description: "A concise, effective outreach email" },
+  },
+  required: ["emailBody"],
+  additionalProperties: false,
+};
+
+/** Generate ONE document (cv | coverLetter | emailBody) via a focused JSON-schema call. */
+async function generateTailoredDoc(
+  cfg: AiConfig,
+  key: "cv" | "coverLetter" | "emailBody",
+  instructions: string,
+  opts: { maxTokens: number; schemaName: string; schema: Record<string, unknown> }
+): Promise<string> {
   const messages: ChatMessage[] = [
     {
       role: "system",
       content:
         "You are a world-class professional career consultant and expert copywriter. Respond ONLY with a valid JSON object.",
     },
-    {
-      role: "user",
-      content: `Your task is to generate a tailored CV, a high-impact cover letter, and a concise outreach email.
+    { role: "user", content: instructions },
+  ];
+
+  const parsed = await chatJson<any>(cfg, messages, {
+    maxTokens: opts.maxTokens,
+    schemaName: opts.schemaName,
+    schema: opts.schema,
+    reasoningEffort: "none",
+  });
+
+  const value = typeof parsed?.[key] === "string" ? parsed[key].trim() : "";
+  if (!value) {
+    throw new Error(`The AI response was missing the "${key}" document. Please try again.`);
+  }
+  return value;
+}
+
+/**
+ * Generate tailored CV, cover letter and outreach email from master CV + JD.
+ * Three independent AI calls run in PARALLEL (Promise.all) — each has a small,
+ * focused output so the slowest one still finishes well inside the 55s budget.
+ */
+export async function runTailoredGeneration(cv: string, jd: string): Promise<TailoredDocuments> {
+  const cfg = getAiConfig();
+  const trimmedCV = trimInput(cv);
+  const trimmedJD = trimInput(jd);
+
+  const sharedContext = `\n\nMaster CV:\n${trimmedCV}\n\nJob Description:\n${trimmedJD}`;
+
+  const [cvOut, coverLetter, emailBody] = await Promise.all([
+    generateTailoredDoc(
+      cfg,
+      "cv",
+      `Tailor the master CV below for the target Job Description.
 
       CV GUIDELINES:
-      - Update the master CV to highlight achievements relevant to the Job Description.
-      - Ensure it remains professional and standard in format.
+      - Update the master CV to highlight achievements and skills relevant to the Job Description.
+      - Reorder and emphasise relevant experience, but stay truthful to the master CV: never invent employers, dates, titles or credentials.
+      - Professional, standard, ATS-friendly format in clean Markdown.
+      - Keep it concise (equivalent of one page, roughly 500-650 words).
+      - IMPORTANT: Output the COMPLETE CV. Do not cut off mid-sentence.
+
+      OUTPUT FORMAT:
+      - Respond with ONLY a JSON object with exactly one key: "cv" (string containing the full Markdown CV).${sharedContext}`,
+      { maxTokens: CV_MAX_TOKENS, schemaName: "tailored_cv", schema: CV_SCHEMA }
+    ),
+    generateTailoredDoc(
+      cfg,
+      "coverLetter",
+      `Write a high-impact cover letter for the Job Description below, based on the master CV.
 
       COVER LETTER GUIDELINES (MANDATORY STRUCTURE):
       - Tone: Professional, confident, and engaging. Avoid generic AI fluff.
@@ -386,36 +455,26 @@ export async function runTailoredGeneration(cv: string, jd: string): Promise<Tai
       - Length: 250 - 400 words total.
       - IMPORTANT: Ensure the letter is COMPLETE. Do not cut off mid-sentence.
 
+      OUTPUT FORMAT:
+      - Respond with ONLY a JSON object with exactly one key: "coverLetter" (string).${sharedContext}`,
+      { maxTokens: COVER_LETTER_MAX_TOKENS, schemaName: "tailored_cover_letter", schema: COVER_LETTER_SCHEMA }
+    ),
+    generateTailoredDoc(
+      cfg,
+      "emailBody",
+      `Write a concise, effective outreach email to accompany the job application described below.
+
       EMAIL GUIDELINES:
-      - A concise, effective outreach email (120 - 180 words) for the application.
+      - 120 - 180 words for the application.
       - The first line must be the subject line in the form: Subject: ...
       - Reference the attached CV and cover letter.
+      - IMPORTANT: Ensure the email is COMPLETE. Do not cut off mid-sentence.
 
       OUTPUT FORMAT:
-      - Respond with ONLY a JSON object with exactly these keys: "cv", "coverLetter", "emailBody" (all strings).
+      - Respond with ONLY a JSON object with exactly one key: "emailBody" (string).${sharedContext}`,
+      { maxTokens: EMAIL_MAX_TOKENS, schemaName: "tailored_email", schema: EMAIL_SCHEMA }
+    ),
+  ]);
 
-      Master CV:
-      ${trimmedCV}
-      
-      Job Description:
-      ${trimmedJD}`,
-    },
-  ];
-
-  const parsed = await chatJson<any>(cfg, messages, {
-    maxTokens: TAILORED_MAX_TOKENS,
-    schemaName: "tailored_documents",
-    schema: TAILORED_SCHEMA,
-    reasoningEffort: "low",
-  });
-
-  const cvOut = typeof parsed?.cv === "string" ? parsed.cv.trim() : "";
-  const coverLetter = typeof parsed?.coverLetter === "string" ? parsed.coverLetter.trim() : "";
-  const emailBody = typeof parsed?.emailBody === "string" ? parsed.emailBody.trim() : "";
-  if (!cvOut || !coverLetter || !emailBody) {
-    throw new Error(
-      "The AI response was missing one or more required documents (cv, coverLetter, emailBody). Please try again."
-    );
-  }
   return { cv: cvOut, coverLetter, emailBody };
 }
