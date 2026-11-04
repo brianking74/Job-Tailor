@@ -2,8 +2,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Layout } from './components/Layout.tsx';
 import { StepIndicator } from './components/StepIndicator.tsx';
-import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments } from './types.ts';
+import { AppStep, CVData, JobDescription, ATSAnalysis, TailoredDocuments, AuthUser } from './types.ts';
 import { analyzeATS, generateTailoredContent, shortenCoverLetter } from './services/geminiService.ts';
+import { getCurrentUser, signOut } from './services/authService.ts';
+import { AuthModal } from './components/AuthModal.tsx';
+import type { AuthModalMode } from './components/AuthModal.tsx';
 import { downloadAsPDF, downloadAsWord } from './utils/exportUtils.ts';
 import { RemoteJobs } from './components/RemoteJobs.tsx';
 
@@ -51,6 +54,11 @@ const App: React.FC = () => {
   const [tempCVContent, setTempCVContent] = useState("");
   const [cvInputMode, setCvInputMode] = useState<'upload' | 'paste'>('upload');
   const [manualCVText, setManualCVText] = useState("");
+
+  // Auth state — simple client-side accounts (see services/authService.ts)
+  const [user, setUser] = useState<AuthUser | null>(() => getCurrentUser());
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<AuthModalMode>('signup');
   
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -179,6 +187,22 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // --- Auth handlers ---
+  const openAuthModal = (mode: AuthModalMode) => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  };
+
+  const handleAuthSuccess = (authenticated: AuthUser) => {
+    setUser(authenticated);
+    setAuthModalOpen(false);
+  };
+
+  const handleSignOut = () => {
+    signOut();
+    setUser(null);
   };
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
@@ -519,8 +543,17 @@ const App: React.FC = () => {
       onGetStartedClick={() => setStep(AppStep.UPLOAD_CV)}
       isLanding={step === AppStep.LANDING}
       currentStep={step}
+      user={user}
+      onLoginClick={() => openAuthModal('login')}
+      onSignOut={handleSignOut}
     >
       {showPaymentModal && <PaymentModal />}
+      <AuthModal
+        open={authModalOpen}
+        initialMode={authModalMode}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthSuccess={handleAuthSuccess}
+      />
       
       {step === AppStep.LANDING ? (
         <LandingPage />

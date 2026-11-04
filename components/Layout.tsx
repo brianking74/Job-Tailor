@@ -1,5 +1,6 @@
 
 import React from 'react';
+import type { AuthUser } from '../types.ts';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -9,6 +10,11 @@ interface LayoutProps {
   onGetStartedClick?: () => void;
   isLanding?: boolean;
   currentStep?: string;
+  /** Logged-in user (null/undefined → show the Log In button). */
+  user?: AuthUser | null;
+  /** Opens the sign up / log in modal. */
+  onLoginClick?: () => void;
+  onSignOut?: () => void;
 }
 
 export const Layout: React.FC<LayoutProps> = ({ 
@@ -17,7 +23,10 @@ export const Layout: React.FC<LayoutProps> = ({
   onRemoteJobsClick,
   onGetStartedClick,
   isLanding,
-  currentStep 
+  currentStep,
+  user,
+  onLoginClick,
+  onSignOut
 }) => {
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -50,12 +59,34 @@ export const Layout: React.FC<LayoutProps> = ({
             </nav>
 
             <div className="flex items-center gap-4">
-              <button 
-                onClick={onLogoClick}
-                className="hidden sm:block text-sm font-semibold text-slate-600 hover:text-blue-600"
-              >
-                Log In
-              </button>
+              {user ? (
+                <div className="hidden sm:flex items-center gap-3">
+                  <div
+                    className="flex items-center gap-2"
+                    title={user.email}
+                  >
+                    <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-black uppercase">
+                      {user.name.charAt(0)}
+                    </div>
+                    <span className="text-sm font-bold text-slate-700 max-w-[140px] truncate">
+                      {user.name}
+                    </span>
+                  </div>
+                  <button
+                    onClick={onSignOut}
+                    className="text-sm font-semibold text-slate-500 hover:text-red-600 transition-colors"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <button 
+                  onClick={onLoginClick ?? onLogoClick}
+                  className="hidden sm:block text-sm font-semibold text-slate-600 hover:text-blue-600"
+                >
+                  Log In
+                </button>
+              )}
               <button 
                 onClick={onGetStartedClick ?? onLogoClick}
                 className="bg-blue-600 text-white px-6 py-2.5 rounded-full text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all hover:-translate-y-0.5"
